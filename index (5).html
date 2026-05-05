@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AgriSense — Smart Plant Monitor</title>
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+
+<style>
+/* ═══════════════════════════════════════════════
+   CSS VARIABLES & RESET
+═══════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --soil:    #2d1f0e;
+  --bark:    #4a2e14;
+  --moss:    #3d5a32;
+  --fern:    #5c8a47;
+  --leaf:    #7db560;
+  --mint:    #a8d48a;
+  --mist:    #d6ebc4;
+  --cream:   #f4f0e6;
+  --amber:   #e8a030;
+  --fire:    #d45f2a;
+  --water:   #4a8fb5;
+  --sky:     #7ab8d4;
+
+  --font-display: 'Playfair Display', serif;
+  --font-body:    'DM Sans', sans-serif;
+  --font-mono:    'DM Mono', monospace;
+}
+
+html { scroll-behavior: smooth; }
+body { background: var(--soil); color: var(--cream); font-family: var(--font-body); overflow-x: hidden; }
+
+/* ═══════════════════════════════════════════════
+   PAGE SYSTEM
+═══════════════════════════════════════════════ */
+.page { display: none; min-height: 100vh; }
+.page.active { display: block; }
+
+/* ═══════════════════════════════════════════════
+   NAV
+═══════════════════════════════════════════════ */
+nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 1.2rem 3rem;
+  background: rgba(45, 31, 14, 0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(125, 181, 96, 0.15);
+}
+.nav-logo {
+  font-family: var(--font-display); font-size: 1.5rem; font-weight: 700;
+  color: var(--leaf);
+  display: flex; align-items: center; gap: .5rem;
+  cursor: pointer;
+}
+.nav-logo span { color: var(--mint); font-style: italic; }
+.nav-links { display: flex; gap: .5rem; }
+.nav-btn {
+  background: none; border: 1px solid transparent; color: var(--mist);
+  padding: .5rem 1.2rem; border-radius: 2rem; cursor: pointer;
+  font-family: var(--font-body); font-size: .9rem; letter-spacing: .03em;
+  transition: all .25s;
+}
+.nav-btn:hover { border-color: var(--fern); color: var(--mint); }
+.nav-btn.active { background: var(--moss); border-color: var(--leaf); color: var(--cream); }
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #666; display: inline-block; margin-right: .4rem;
+  transition: background .4s;
+}
+.status-dot.online  { background: var(--leaf); box-shadow: 0 0 6px var(--leaf); }
+.status-dot.offline { background: var(--fire); }
+
+/* ═══════════════════════════════════════════════
+   HOME PAGE
+═══════════════════════════════════════════════ */
+#home {
+  background:
+    radial-gradient(ellipse 60% 50% at 80% 30%, rgba(93,138,71,.25) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 60% at 10% 80%, rgba(74,143,181,.12) 0%, transparent 60%),
+    linear-gradient(170deg, #1a0f05 0%, #2d1f0e 50%, #1e2d12 100%);
+  min-height: 100vh;
+}
+
+/* Animated leaf particles */
+.particles { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
+.particle {
+  position: absolute; width: 6px; height: 6px; border-radius: 50% 0 50% 0;
+  background: rgba(125, 181, 96, .3);
+  animation: float linear infinite;
+}
+@keyframes float {
+  0%   { transform: translateY(110vh) rotate(0deg) scale(.5); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: .5; }
+  100% { transform: translateY(-10vh) rotate(720deg) scale(1); opacity: 0; }
+}
+
+.home-hero {
+  position: relative; z-index: 1;
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center; padding: 8rem 2rem 4rem;
+}
+
+.hero-eyebrow {
+  font-family: var(--font-mono); font-size: .75rem; letter-spacing: .25em;
+  color: var(--leaf); text-transform: uppercase;
+  display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem;
+}
+.hero-eyebrow::before, .hero-eyebrow::after {
+  content: ''; flex: 1; height: 1px; background: var(--fern); max-width: 60px;
+}
+
+.hero-title {
+  font-family: var(--font-display); font-size: clamp(3.5rem, 9vw, 7.5rem);
+  line-height: 1; font-weight: 700;
+  color: var(--cream);
+  animation: fadeUp .8s ease both;
+}
+.hero-title em {
+  font-style: italic; color: var(--leaf);
+  display: block;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.hero-sub {
+  margin-top: 1.5rem; max-width: 520px;
+  font-size: 1.1rem; line-height: 1.7; color: rgba(214,235,196,.75);
+  font-weight: 300;
+  animation: fadeUp .8s .2s ease both;
+}
+
+.hero-cta {
+  margin-top: 3rem; display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center;
+  animation: fadeUp .8s .35s ease both;
+}
+
+.btn-primary {
+  background: var(--moss); color: var(--cream);
+  border: none; padding: .85rem 2.2rem; border-radius: 3rem;
+  font-family: var(--font-body); font-size: 1rem; font-weight: 500;
+  cursor: pointer; transition: all .3s;
+  letter-spacing: .03em;
+  box-shadow: 0 4px 20px rgba(61,90,50,.6);
+}
+.btn-primary:hover { background: var(--fern); transform: translateY(-2px); box-shadow: 0 8px 30px rgba(61,90,50,.8); }
+
+.btn-outline {
+  background: none; color: var(--mist);
+  border: 1px solid rgba(168,212,138,.3); padding: .85rem 2.2rem; border-radius: 3rem;
+  font-family: var(--font-body); font-size: 1rem; font-weight: 400;
+  cursor: pointer; transition: all .3s;
+}
+.btn-outline:hover { border-color: var(--leaf); color: var(--leaf); }
+
+/* Stat bar */
+.home-stats {
+  position: relative; z-index: 1;
+  display: flex; justify-content: center; gap: 0;
+  padding: 0 2rem 6rem;
+  flex-wrap: wrap;
+}
+.stat-item {
+  padding: 2rem 3rem; border-left: 1px solid rgba(125,181,96,.15);
+  text-align: center; flex: 1; min-width: 160px;
+}
+.stat-item:first-child { border-left: none; }
+.stat-num { font-family: var(--font-display); font-size: 3rem; color: var(--leaf); font-weight: 700; }
+.stat-label { font-size: .8rem; letter-spacing: .15em; text-transform: uppercase; color: rgba(214,235,196,.5); margin-top: .3rem; }
+
+/* Features */
+.home-features {
+  position: relative; z-index: 1;
+  padding: 4rem 3rem 8rem; max-width: 1100px; margin: 0 auto;
+}
+.section-label {
+  font-family: var(--font-mono); font-size: .7rem; letter-spacing: .2em; color: var(--fern);
+  text-transform: uppercase; margin-bottom: 3rem;
+}
+.features-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5px;
+  background: rgba(125,181,96,.1); border: 1.5px solid rgba(125,181,96,.1);
+}
+.feature-card {
+  background: rgba(45,31,14,.8); padding: 2.5rem;
+  transition: background .3s;
+}
+.feature-card:hover { background: rgba(61,90,50,.25); }
+.feat-icon {
+  font-size: 2rem; margin-bottom: 1.2rem;
+  display: flex; align-items: center; justify-content: center;
+  width: 56px; height: 56px;
+  background: rgba(125,181,96,.1); border-radius: 12px;
+  border: 1px solid rgba(125,181,96,.15);
+}
+.feat-title { font-family: var(--font-display); font-size: 1.2rem; margin-bottom: .8rem; color: var(--cream); }
+.feat-desc { font-size: .9rem; line-height: 1.7; color: rgba(214,235,196,.6); font-weight: 300; }
+
+/* Plants showcase */
+.home-plants {
+  padding: 4rem 3rem 8rem; max-width: 1100px; margin: 0 auto;
+}
+.plants-strip { display: flex; gap: 1rem; flex-wrap: wrap; }
+.plant-chip {
+  display: flex; flex-direction: column;
+  padding: 1.5rem 2rem; flex: 1; min-width: 200px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(125,181,96,.12);
+  border-radius: 16px; cursor: pointer; transition: all .3s;
+}
+.plant-chip:hover { background: rgba(93,138,71,.15); border-color: var(--fern); transform: translateY(-3px); }
+.plant-chip-name { font-family: var(--font-display); font-size: 1.1rem; margin-bottom: .5rem; }
+.plant-chip-range { font-family: var(--font-mono); font-size: .72rem; color: rgba(168,212,138,.6); }
+
+/* Footer */
+.home-footer {
+  border-top: 1px solid rgba(125,181,96,.1);
+  padding: 2.5rem 3rem; display: flex;
+  justify-content: space-between; align-items: center; flex-wrap: gap;
+  font-size: .8rem; color: rgba(214,235,196,.35);
+  font-family: var(--font-mono);
+}
+
+/* ═══════════════════════════════════════════════
+   MONITOR PAGE
+═══════════════════════════════════════════════ */
+#monitor {
+  background:
+    radial-gradient(ellipse 50% 40% at 15% 20%, rgba(61,90,50,.2) 0%, transparent 60%),
+    linear-gradient(160deg, #12180d 0%, #1e140a 60%, #0d1a1f 100%);
+  padding-top: 80px; min-height: 100vh;
+}
+
+.monitor-header {
+  padding: 3rem 3rem 2rem;
+  display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 1.5rem;
+}
+.monitor-title-group h1 {
+  font-family: var(--font-display); font-size: 2.5rem; color: var(--cream);
+  line-height: 1.1;
+}
+.monitor-title-group p { color: rgba(214,235,196,.5); font-size: .9rem; margin-top: .4rem; }
+
+.conn-badge {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .5rem 1.2rem; border-radius: 2rem;
+  background: rgba(255,255,255,.05); border: 1px solid rgba(125,181,96,.15);
+  font-family: var(--font-mono); font-size: .78rem;
+}
+
+/* Plant switcher */
+.plant-switcher {
+  padding: 0 3rem 2rem;
+  display: flex; gap: .75rem; flex-wrap: wrap;
+}
+.profile-btn {
+  padding: .55rem 1.4rem; border-radius: 2rem; cursor: pointer;
+  font-family: var(--font-body); font-size: .88rem;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(125,181,96,.15);
+  color: rgba(214,235,196,.6);
+  transition: all .25s;
+}
+.profile-btn:hover { border-color: var(--fern); color: var(--cream); }
+.profile-btn.active { background: var(--moss); border-color: var(--leaf); color: var(--cream); }
+.profile-btn .plant-temp-hint { font-family: var(--font-mono); font-size: .7rem; opacity: .6; }
+
+/* ── Gauge row ── */
+.gauges-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5px; background: rgba(125,181,96,.06);
+  margin: 0 3rem;
+  border: 1.5px solid rgba(125,181,96,.1);
+}
+.gauge-card {
+  background: rgba(18,24,13,.9); padding: 2rem 2rem 1.5rem;
+  display: flex; flex-direction: column;
+}
+.gauge-label {
+  font-family: var(--font-mono); font-size: .68rem; letter-spacing: .18em;
+  text-transform: uppercase; color: rgba(168,212,138,.5); margin-bottom: 1rem;
+}
+.gauge-value {
+  font-family: var(--font-display); font-size: 3.2rem; font-weight: 700;
+  line-height: 1; color: var(--cream);
+}
+.gauge-unit { font-size: 1.2rem; color: rgba(168,212,138,.5); }
+.gauge-bar-wrap { margin-top: 1.2rem; height: 4px; background: rgba(255,255,255,.06); border-radius: 2px; }
+.gauge-bar { height: 100%; border-radius: 2px; transition: width .8s ease; }
+.gauge-range { font-family: var(--font-mono); font-size: .65rem; color: rgba(168,212,138,.35); margin-top: .5rem; }
+.gauge-status-label { font-size: .75rem; margin-top: auto; padding-top: 1rem; }
+.status-good  { color: var(--leaf); }
+.status-warn  { color: var(--amber); }
+.status-bad   { color: var(--fire); }
+
+/* ── Actuators row ── */
+.actuators-section { padding: 2.5rem 3rem 0; }
+.section-title { font-family: var(--font-mono); font-size: .7rem; letter-spacing: .2em; color: var(--fern); text-transform: uppercase; margin-bottom: 1.5rem; }
+.actuators-row { display: flex; gap: 1rem; flex-wrap: wrap; }
+
+.actuator-card {
+  flex: 1; min-width: 160px;
+  padding: 1.8rem; border-radius: 16px;
+  background: rgba(255,255,255,.03);
+  border: 1.5px solid rgba(255,255,255,.06);
+  display: flex; flex-direction: column; align-items: center; gap: 1rem;
+  transition: all .4s;
+}
+.actuator-card.on {
+  background: rgba(93,138,71,.15);
+  border-color: var(--fern);
+  box-shadow: 0 0 30px rgba(93,138,71,.15);
+}
+.actuator-card.fan.on   { border-color: var(--sky);   background: rgba(74,143,181,.12); box-shadow: 0 0 30px rgba(74,143,181,.15); }
+.actuator-card.pump.on  { border-color: var(--water);  background: rgba(74,143,181,.12); box-shadow: 0 0 30px rgba(74,143,181,.15); }
+
+.actuator-icon { font-size: 2.2rem; transition: transform .5s; }
+.actuator-card.on .actuator-icon.spin { animation: spin 2s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.actuator-name { font-family: var(--font-display); font-size: 1.1rem; }
+.actuator-state { font-family: var(--font-mono); font-size: .7rem; letter-spacing: .15em; text-transform: uppercase; }
+.actuator-card.on  .actuator-state { color: var(--leaf); }
+.actuator-card:not(.on) .actuator-state { color: rgba(168,212,138,.3); }
+
+/* ── Live log / history ── */
+.history-section { padding: 2.5rem 3rem 3rem; }
+.history-table-wrap { border: 1.5px solid rgba(125,181,96,.1); overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: .8rem; }
+thead th { padding: .8rem 1.2rem; text-align: left; color: rgba(168,212,138,.5); font-weight: 400; letter-spacing: .1em; border-bottom: 1px solid rgba(125,181,96,.1); }
+tbody tr { transition: background .2s; }
+tbody tr:hover { background: rgba(93,138,71,.08); }
+tbody td { padding: .75rem 1.2rem; color: rgba(214,235,196,.8); border-bottom: 1px solid rgba(125,181,96,.05); }
+tbody tr:last-child td { border-bottom: none; }
+.tag {
+  display: inline-block; padding: .2rem .6rem; border-radius: .3rem;
+  font-size: .68rem; letter-spacing: .08em;
+}
+.tag-on  { background: rgba(93,138,71,.25); color: var(--leaf); }
+.tag-off { background: rgba(255,255,255,.05); color: rgba(168,212,138,.3); }
+
+/* ── Plant profile detail panel ── */
+.profile-panel {
+  margin: 0 3rem 2rem;
+  padding: 1.5rem 2rem;
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(125,181,96,.12);
+  border-radius: 8px;
+  display: flex; gap: 3rem; flex-wrap: wrap; align-items: center;
+}
+.profile-detail-name { font-family: var(--font-display); font-size: 1.5rem; color: var(--leaf); }
+.profile-ranges { display: flex; gap: 2rem; flex-wrap: wrap; }
+.range-item { display: flex; flex-direction: column; gap: .2rem; }
+.range-item .rl { font-family: var(--font-mono); font-size: .65rem; color: rgba(168,212,138,.4); text-transform: uppercase; letter-spacing: .12em; }
+.range-item .rv { font-family: var(--font-mono); font-size: .88rem; color: var(--mist); }
+
+/* ── Last updated ── */
+.last-updated { font-family: var(--font-mono); font-size: .72rem; color: rgba(168,212,138,.3); margin: 0 3rem 1rem; }
+
+/* ─── RESPONSIVE ─── */
+@media (max-width: 640px) {
+  nav { padding: 1rem 1.2rem; }
+  .home-hero { padding-top: 6rem; }
+  .home-features, .home-plants, .home-stats { padding-left: 1.2rem; padding-right: 1.2rem; }
+  .monitor-header, .plant-switcher, .actuators-section, .history-section, .history-section { padding-left: 1.2rem; padding-right: 1.2rem; }
+  .gauges-row { margin: 0 1.2rem; }
+  .profile-panel { margin: 0 1.2rem 2rem; }
+  .last-updated { margin: 0 1.2rem 1rem; }
+  .home-footer { flex-direction: column; gap: .5rem; text-align: center; }
+}
+</style>
+</head>
+<body>
+
+<!-- Floating particles -->
+<div class="particles" id="particles"></div>
+
+<!-- ══════════ NAV ══════════ -->
+<nav>
+  <div class="nav-logo" onclick="showPage('home')">
+    🌿 Agri<span>Sense</span>
+  </div>
+  <div class="nav-links">
+    <button class="nav-btn active" id="nav-home"    onclick="showPage('home')">AgriHome</button>
+    <button class="nav-btn"        id="nav-monitor" onclick="showPage('monitor')">Monitor</button>
+    <span class="conn-badge" id="conn-badge" style="font-size:.75rem;padding:.35rem .9rem;">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="conn-text">Connecting…</span>
+    </span>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════════════════
+     HOME PAGE
+══════════════════════════════════════════ -->
+<div class="page active" id="home">
+
+  <section class="home-hero">
+    <div class="hero-eyebrow">Smart Agricultural Monitoring</div>
+    <h1 class="hero-title">Grow smarter<br><em>with AgriSense</em></h1>
+    <p class="hero-sub">Real-time sensor data, automated actuator control, and intelligent plant profiles — all in one system powered by ESP32 + Firebase.</p>
+    <div class="hero-cta">
+      <button class="btn-primary" onclick="showPage('monitor')">Open Monitor →</button>
+      <button class="btn-outline" onclick="document.querySelector('.home-features').scrollIntoView({behavior:'smooth'})">Learn more</button>
+    </div>
+  </section>
+
+  <div class="home-stats">
+    <div class="stat-item"><div class="stat-num">4</div><div class="stat-label">Plant Profiles</div></div>
+    <div class="stat-item"><div class="stat-num">3</div><div class="stat-label">Actuators</div></div>
+    <div class="stat-item"><div class="stat-num">5s</div><div class="stat-label">Update Interval</div></div>
+    <div class="stat-item"><div class="stat-num">24/7</div><div class="stat-label">Monitoring</div></div>
+  </div>
+
+  <section class="home-features">
+    <div class="section-label">// What it does</div>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feat-icon">🌡️</div>
+        <div class="feat-title">Temperature & Humidity</div>
+        <p class="feat-desc">DHT22 sensor provides accurate temperature readings every 5 seconds. The fan relay activates automatically when your plant's optimal range is exceeded.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feat-icon">💡</div>
+        <div class="feat-title">Light Intensity</div>
+        <p class="feat-desc">LDR photoresistor converts raw ADC readings to a 0–100 % intensity scale. Grow lights switch on automatically when ambient light falls below threshold.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feat-icon">💧</div>
+        <div class="feat-title">Soil Moisture</div>
+        <p class="feat-desc">Capacitive soil sensor maps dry/wet extremes to a clean percentage. The pump relay triggers when soil drops below the plant's moisture minimum.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feat-icon">☁️</div>
+        <div class="feat-title">Firebase Cloud Sync</div>
+        <p class="feat-desc">All sensor readings and actuator states stream to Firebase Realtime Database every 5 seconds — with graceful offline fallback when WiFi is unavailable.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feat-icon">🌿</div>
+        <div class="feat-title">Plant Profiles</div>
+        <p class="feat-desc">Switch between Pepper, Mint, Parsley, and Thyme profiles. Each has tailored temperature, light, and moisture ranges. Change profile live from this dashboard.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feat-icon">📟</div>
+        <div class="feat-title">LCD Local Display</div>
+        <p class="feat-desc">16×2 I²C LCD shows plant name, actuator icons, and live sensor readings locally — fully functional without internet access.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="home-plants">
+    <div class="section-label">// Supported plant profiles</div>
+    <div class="plants-strip">
+      <div class="plant-chip" onclick="showPage('monitor')">
+        <div class="plant-chip-name">🌶 Pepper</div>
+        <div class="plant-chip-range">Temp 21–27°C · Light 40–90% · Soil 30–70%</div>
+      </div>
+      <div class="plant-chip" onclick="showPage('monitor')">
+        <div class="plant-chip-name">🌿 Mint</div>
+        <div class="plant-chip-range">Temp 18–28°C · Light 25–75% · Soil 40–75%</div>
+      </div>
+      <div class="plant-chip" onclick="showPage('monitor')">
+        <div class="plant-chip-name">🌱 Parsley</div>
+        <div class="plant-chip-range">Temp 15–26°C · Light 30–80% · Soil 35–65%</div>
+      </div>
+      <div class="plant-chip" onclick="showPage('monitor')">
+        <div class="plant-chip-name">🪴 Thyme</div>
+        <div class="plant-chip-range">Temp 16–35°C · Light 25–80% · Soil 25–60%</div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="home-footer">
+    <span>AgriSense v2 · ESP32 + Firebase</span>
+    <span>Built for smart indoor agriculture</span>
+    <span>© 2025 AgriSense Project</span>
+  </footer>
+</div>
+
+
+<!-- ══════════════════════════════════════════
+     MONITOR PAGE
+══════════════════════════════════════════ -->
+<div class="page" id="monitor">
+
+  <div class="monitor-header">
+    <div class="monitor-title-group">
+      <h1>Live Monitor</h1>
+      <p>Real-time sensor data & actuator control</p>
+    </div>
+    <div class="conn-badge" id="conn-badge2">
+      <span class="status-dot" id="status-dot2"></span>
+      <span id="conn-text2">Connecting…</span>
+    </div>
+  </div>
+
+  <!-- Plant switcher -->
+  <div class="plant-switcher" id="plant-switcher"></div>
+
+  <!-- Active profile detail -->
+  <div class="profile-panel" id="profile-panel">
+    <div class="profile-detail-name" id="pd-name">—</div>
+    <div class="profile-ranges">
+      <div class="range-item"><div class="rl">Temp range</div><div class="rv" id="pd-temp">—</div></div>
+      <div class="range-item"><div class="rl">Light range</div><div class="rv" id="pd-light">—</div></div>
+      <div class="range-item"><div class="rl">Soil range</div><div class="rv" id="pd-soil">—</div></div>
+    </div>
+  </div>
+
+  <!-- Gauges -->
+  <div class="gauges-row">
+    <div class="gauge-card">
+      <div class="gauge-label">Temperature</div>
+      <div class="gauge-value" id="g-temp">—<span class="gauge-unit">°C</span></div>
+      <div class="gauge-bar-wrap"><div class="gauge-bar" id="b-temp" style="background:var(--amber);width:0%"></div></div>
+      <div class="gauge-range" id="r-temp">—</div>
+      <div class="gauge-status-label" id="s-temp">—</div>
+    </div>
+    <div class="gauge-card">
+      <div class="gauge-label">Light Intensity</div>
+      <div class="gauge-value" id="g-light">—<span class="gauge-unit">%</span></div>
+      <div class="gauge-bar-wrap"><div class="gauge-bar" id="b-light" style="background:var(--amber);width:0%"></div></div>
+      <div class="gauge-range" id="r-light">—</div>
+      <div class="gauge-status-label" id="s-light">—</div>
+    </div>
+    <div class="gauge-card">
+      <div class="gauge-label">Soil Moisture</div>
+      <div class="gauge-value" id="g-soil">—<span class="gauge-unit">%</span></div>
+      <div class="gauge-bar-wrap"><div class="gauge-bar" id="b-soil" style="background:var(--water);width:0%"></div></div>
+      <div class="gauge-range" id="r-soil">—</div>
+      <div class="gauge-status-label" id="s-soil">—</div>
+    </div>
+  </div>
+
+  <div class="last-updated" id="last-updated">Last update: —</div>
+
+  <!-- Actuators -->
+  <section class="actuators-section">
+    <div class="section-title">// Actuator Status</div>
+    <div class="actuators-row">
+      <div class="actuator-card fan" id="card-fan">
+        <div class="actuator-icon spin" id="icon-fan">🌀</div>
+        <div class="actuator-name">Fan</div>
+        <div class="actuator-state" id="state-fan">OFF</div>
+      </div>
+      <div class="actuator-card" id="card-led">
+        <div class="actuator-icon" id="icon-led">💡</div>
+        <div class="actuator-name">Grow Light</div>
+        <div class="actuator-state" id="state-led">OFF</div>
+      </div>
+      <div class="actuator-card pump" id="card-pump">
+        <div class="actuator-icon" id="icon-pump">💧</div>
+        <div class="actuator-name">Water Pump</div>
+        <div class="actuator-state" id="state-pump">OFF</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- History log -->
+  <section class="history-section">
+    <div class="section-title">// Reading Log</div>
+    <div class="history-table-wrap">
+      <table>
+        <thead><tr>
+          <th>Time</th><th>Plant</th><th>Temp °C</th><th>Light %</th><th>Soil %</th>
+          <th>Fan</th><th>LED</th><th>Pump</th>
+        </tr></thead>
+        <tbody id="log-body">
+          <tr><td colspan="8" style="text-align:center;padding:2rem;color:rgba(168,212,138,.3);">Waiting for data…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</div><!-- /monitor -->
+
+
+<script>
+/* ══════════════════════════════════════════
+   PLANT PROFILES (mirrors ESP32 code)
+══════════════════════════════════════════ */
+const PLANTS = [
+  { name:"Pepper",  emoji:"🌶", tempMin:21, tempMax:27, lightMin:40, lightMax:90, soilMin:30, soilMax:70 },
+  { name:"Mint",    emoji:"🌿", tempMin:18, tempMax:28, lightMin:25, lightMax:75, soilMin:40, soilMax:75 },
+  { name:"Parsley", emoji:"🌱", tempMin:15, tempMax:26, lightMin:30, lightMax:80, soilMin:35, soilMax:65 },
+  { name:"Thyme",   emoji:"🪴", tempMin:16, tempMax:35, lightMin:25, lightMax:80, soilMin:25, soilMax:60 },
+];
+let activePlant = 0;
+
+/* ══════════════════════════════════════════
+   PARTICLES (home page only)
+══════════════════════════════════════════ */
+const pContainer = document.getElementById('particles');
+for (let i = 0; i < 18; i++) {
+  const p = document.createElement('div');
+  p.className = 'particle';
+  p.style.cssText = `
+    left:${Math.random()*100}%;
+    width:${4+Math.random()*6}px;
+    height:${4+Math.random()*6}px;
+    animation-duration:${8+Math.random()*14}s;
+    animation-delay:${-Math.random()*20}s;
+    opacity:${.2+Math.random()*.4};
+  `;
+  pContainer.appendChild(p);
+}
+
+/* ══════════════════════════════════════════
+   PAGE NAVIGATION
+══════════════════════════════════════════ */
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('nav-' + id).classList.add('active');
+  window.scrollTo(0,0);
+}
+
+/* ══════════════════════════════════════════
+   PLANT SWITCHER UI
+══════════════════════════════════════════ */
+function buildSwitcher() {
+  const wrap = document.getElementById('plant-switcher');
+  wrap.innerHTML = '';
+  PLANTS.forEach((pl, i) => {
+    const b = document.createElement('button');
+    b.className = 'profile-btn' + (i === activePlant ? ' active' : '');
+    b.innerHTML = `${pl.emoji} ${pl.name} <div class="plant-temp-hint">${pl.tempMin}–${pl.tempMax}°C</div>`;
+    b.onclick = () => selectPlant(i);
+    wrap.appendChild(b);
+  });
+  updateProfilePanel();
+}
+
+function selectPlant(i) {
+  activePlant = i;
+  buildSwitcher();
+  // Write to Firebase so ESP32 can pick it up
+  if (typeof db !== 'undefined') {
+    db.ref('/Control/ActivePlant').set(i).catch(()=>{});
+  }
+  updateGauges(lastData); // re-evaluate colours against new profile
+}
+
+function updateProfilePanel() {
+  const p = PLANTS[activePlant];
+  document.getElementById('pd-name').textContent  = p.emoji + ' ' + p.name;
+  document.getElementById('pd-temp').textContent  = `${p.tempMin} – ${p.tempMax} °C`;
+  document.getElementById('pd-light').textContent = `${p.lightMin} – ${p.lightMax} %`;
+  document.getElementById('pd-soil').textContent  = `${p.soilMin} – ${p.soilMax} %`;
+}
+
+/* ══════════════════════════════════════════
+   GAUGE HELPERS
+══════════════════════════════════════════ */
+let lastData = {};
+const MAX_LOG = 30;
+const logRows = [];
+
+function statusClass(val, min, max) {
+  if (val < min || val > max) return 'status-bad';
+  const margin = (max - min) * .15;
+  if (val < min + margin || val > max - margin) return 'status-warn';
+  return 'status-good';
+}
+function statusText(val, min, max) {
+  if (val < min) return '▼ Below range';
+  if (val > max) return '▲ Above range';
+  return '✔ In range';
+}
+
+function updateGauges(d) {
+  if (!d || d.Temp === undefined) return;
+  lastData = d;
+  const p = PLANTS[activePlant];
+
+  // Temp
+  const tv = parseFloat(d.Temp).toFixed(1);
+  document.getElementById('g-temp').innerHTML = tv + '<span class="gauge-unit">°C</span>';
+  document.getElementById('b-temp').style.width = Math.min(100, Math.max(0, ((d.Temp - 10) / 40) * 100)) + '%';
+  document.getElementById('r-temp').textContent = `Profile range: ${p.tempMin}–${p.tempMax}°C`;
+  const sc = statusClass(d.Temp, p.tempMin, p.tempMax);
+  document.getElementById('s-temp').textContent = statusText(d.Temp, p.tempMin, p.tempMax);
+  document.getElementById('s-temp').className = 'gauge-status-label ' + sc;
+
+  // Light
+  const lv = Math.round(d.Light);
+  document.getElementById('g-light').innerHTML = lv + '<span class="gauge-unit">%</span>';
+  document.getElementById('b-light').style.width = lv + '%';
+  document.getElementById('r-light').textContent = `Profile range: ${p.lightMin}–${p.lightMax}%`;
+  document.getElementById('s-light').textContent = statusText(d.Light, p.lightMin, p.lightMax);
+  document.getElementById('s-light').className = 'gauge-status-label ' + statusClass(d.Light, p.lightMin, p.lightMax);
+
+  // Soil
+  const sv = Math.round(d.Soil);
+  document.getElementById('g-soil').innerHTML = sv + '<span class="gauge-unit">%</span>';
+  document.getElementById('b-soil').style.width = sv + '%';
+  document.getElementById('r-soil').textContent = `Profile range: ${p.soilMin}–${p.soilMax}%`;
+  document.getElementById('s-soil').textContent = statusText(d.Soil, p.soilMin, p.soilMax);
+  document.getElementById('s-soil').className = 'gauge-status-label ' + statusClass(d.Soil, p.soilMin, p.soilMax);
+
+  // Timestamp
+  const ts = d.Time ? new Date(d.Time * 1000).toLocaleTimeString() : new Date().toLocaleTimeString();
+  document.getElementById('last-updated').textContent = 'Last update: ' + ts;
+}
+
+function updateActuators(act) {
+  if (!act) return;
+  setActuator('fan',  act.Fan);
+  setActuator('led',  act.LED);
+  setActuator('pump', act.Pump);
+}
+
+function setActuator(id, state) {
+  const card  = document.getElementById('card-' + id);
+  const label = document.getElementById('state-' + id);
+  if (state) { card.classList.add('on'); label.textContent = 'ON'; }
+  else        { card.classList.remove('on'); label.textContent = 'OFF'; }
+}
+
+function addLogRow(d, act) {
+  const ts = d.Time ? new Date(d.Time * 1000).toLocaleTimeString() : new Date().toLocaleTimeString();
+  logRows.unshift({
+    ts, plant: d.Plant || '—',
+    temp: parseFloat(d.Temp).toFixed(1),
+    light: Math.round(d.Light),
+    soil: Math.round(d.Soil),
+    fan:  act && act.Fan,
+    led:  act && act.LED,
+    pump: act && act.Pump,
+  });
+  if (logRows.length > MAX_LOG) logRows.pop();
+
+  const tag = (on) => `<span class="tag ${on ? 'tag-on':'tag-off'}">${on ? 'ON':'OFF'}</span>`;
+  document.getElementById('log-body').innerHTML = logRows.map(r =>
+    `<tr>
+      <td>${r.ts}</td><td>${r.plant}</td>
+      <td>${r.temp}</td><td>${r.light}</td><td>${r.soil}</td>
+      <td>${tag(r.fan)}</td><td>${tag(r.led)}</td><td>${tag(r.pump)}</td>
+    </tr>`
+  ).join('');
+}
+
+/* ══════════════════════════════════════════
+   CONNECTION STATUS
+══════════════════════════════════════════ */
+function setOnline(on) {
+  ['status-dot','status-dot2'].forEach(id => {
+    const el = document.getElementById(id);
+    el.className = 'status-dot ' + (on ? 'online' : 'offline');
+  });
+  ['conn-text','conn-text2'].forEach(id => {
+    document.getElementById(id).textContent = on ? 'Live' : 'Offline';
+  });
+}
+
+/* ══════════════════════════════════════════
+   FIREBASE INIT & LISTENERS
+══════════════════════════════════════════ */
+let db;
+try {
+  const firebaseConfig = {
+    apiKey:      "AIzaSyBmBX7qvy2LbCjUXeQSb-yAwSXAeLmH3Mc",
+    authDomain:  "agrisense-e7e43.firebaseapp.com",
+    databaseURL: "https://agrisense-e7e43-default-rtdb.firebaseio.com",
+    projectId:   "agrisense-e7e43",
+    storageBucket: "agrisense-e7e43.firebasestorage.app",
+    messagingSenderId: "740084684692",
+    appId:       "1:740084684692:web:a6e08612a2fc3a4e4b6181"
+  };
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.database();
+
+  // Sign in with the ESP32 credentials
+  firebase.auth().signInWithEmailAndPassword("mohamed@gmail.com", "Agri-Monitor")
+    .then(() => {
+      setOnline(true);
+
+      // ── Live sensor data
+      let actuatorSnapshot = {};
+      db.ref('/Actuators').on('value', snap => {
+        actuatorSnapshot = snap.val() || {};
+        updateActuators(actuatorSnapshot);
+      });
+
+      db.ref('/Sensors/Live').on('value', snap => {
+        const d = snap.val();
+        if (d) {
+          updateGauges(d);
+          addLogRow(d, actuatorSnapshot);
+        }
+      });
+
+      // ── ActivePlant from Firebase (ESP32 may write this too)
+      db.ref('/Control/ActivePlant').on('value', snap => {
+        const v = snap.val();
+        if (v !== null && v !== undefined && v !== activePlant) {
+          activePlant = v;
+          buildSwitcher();
+        }
+      });
+
+    })
+    .catch(err => {
+      console.warn('Firebase auth error:', err.message);
+      setOnline(false);
+    });
+
+  db.ref('.info/connected').on('value', snap => setOnline(!!snap.val()));
+
+} catch(e) {
+  console.warn('Firebase init failed:', e);
+  setOnline(false);
+}
+
+/* ══════════════════════════════════════════
+   INIT
+══════════════════════════════════════════ */
+buildSwitcher();
+</script>
+</body>
+</html>
